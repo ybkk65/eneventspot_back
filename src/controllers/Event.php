@@ -23,27 +23,26 @@ class Event extends SqlConnect {
             $statement = $this->db->prepare($query);
             $statement->execute();
             $events = $statement->fetchAll(PDO::FETCH_ASSOC);
-    
-            foreach ($events as &$event) {
 
+            foreach ($events as &$event) {
                 $imageBase64 = base64_encode($event['image']);
                 unset($event['image']);
                 $event['image_base64'] = $imageBase64;
             }
-    
+
             return ["success" => true, "data" => $events];
         } catch (PDOException $e) {
-            echo "Erreur PDO : " . $e->getMessage();
-            return ["success" => false, "message" => "Erreur lors de la récupération des événements"];
+            return ["success" => false, "message" => "Erreur lors de la récupération des événements: " . $e->getMessage()];
         }
     }
-    
+
     protected function postEvent() {
-        $body =$_POST;
-    
+        
+        $body = $_POST;
+
         if (isset($_FILES['image'])) {
             $file = $_FILES['image'];
-    
+
             if ($file['error'] === UPLOAD_ERR_OK) {
                 $fileTmpName = $file['tmp_name'];
                 $imgData = file_get_contents($fileTmpName);
@@ -53,7 +52,10 @@ class Event extends SqlConnect {
         } else {
             return ["success" => false, "message" => "Aucune image envoyée"];
         }
-    
+
+        // Récupérer les données du corps de la requête
+        $organiserId = $body['userId'];
+        $selectedPerson = $body['selectedPersons'];
         $titre = $body['titre'];
         $description = $body['description'];
         $plus_info = $body['plus-info'];
@@ -71,10 +73,13 @@ class Event extends SqlConnect {
         $countryIcone = $body['countryIcon'];
         $countryName = $body['countryName'];
         $like = 0;
-    
+        $state = "envoyer";
+
         try {
-            $query = "INSERT INTO event (titre, description, description_plus, categorie, image, nbr_pers, prix, date, heure, ville, pays, num_tel, email, majorite, acces, `like`, country_icone, country_name) VALUES (:titre, :description, :description_plus, :categorie, :image, :nbr_pers, :prix, :date, :heure, :ville, :pays, :num_tel, :email, :majorite, :acces, :like, :country_icone, :country_name)";
+            // Insérer les données de l'événement dans la table event
+            $query = "INSERT INTO event (organiser_Id, titre, description, description_plus, categorie, image, nbr_pers, prix, date, heure, ville, pays, num_tel, email, majorite, acces, `like`, country_icone, country_name) VALUES (:organiser_Id, :titre, :description, :description_plus, :categorie, :image, :nbr_pers, :prix, :date, :heure, :ville, :pays, :num_tel, :email, :majorite, :acces, :like, :country_icone, :country_name)";
             $statement = $this->db->prepare($query);
+            $statement->bindParam(':organiser_Id',$organiserId);
             $statement->bindParam(':titre', $titre);
             $statement->bindParam(':description', $description);
             $statement->bindParam(':description_plus', $plus_info);
@@ -93,21 +98,31 @@ class Event extends SqlConnect {
             $statement->bindParam(':like', $like);
             $statement->bindParam(':country_icone', $countryIcone);
             $statement->bindParam(':country_name', $country);
-    
+
             $statement->execute();
-            return ["success" => true, "message" => "Message inséré avec succès"];
+            $eventid = $this->db->lastInsertId();
+
+            // Insérer les données d'invitation dans la table invitation
+            $queryInvitation = "INSERT INTO invitation (organiser_id, invite_list, event_id, statu) VALUES (:organiser_id, :invite_list, :event_id, :statu)";
+            $statementInvitation = $this->db->prepare($queryInvitation);
+            $statementInvitation->bindParam(':organiser_id', $organiserId);
+            $statementInvitation->bindParam(':invite_list', $selectedPerson);
+            $statementInvitation->bindParam(':event_id', $eventid);
+            $statementInvitation->bindParam(':statu', $state);
+
+            $statementInvitation->execute();
+
+            return ["success" => true, "message" => "Événement créé avec succès"];
         } catch (PDOException $e) {
-            return ["success" => false, "message" => "Erreur lors de l'insertion du message: " . $e->getMessage()];
+            return ["success" => false, "message" => "Erreur lors de la création de l'événement: " . $e->getMessage()];
         }
     }
-    
-    
 
     protected function cors() {
         if (isset($_SERVER['HTTP_ORIGIN'])) {
             header("Access-Control-Allow-Origin: *");
             header('Access-Control-Allow-Credentials: true');
-            header('Access-Control-Max-Age: 86400');  
+            header('Access-Control-Max-Age: 86400');
         }
 
         if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {

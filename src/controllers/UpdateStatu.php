@@ -6,7 +6,7 @@ use App\Models\SqlConnect;
 use PDO;
 use PDOException;
 
-class Login extends SqlConnect {
+class UpdateStatu extends SqlConnect {
     protected array $params;
     protected string $reqMethod;
 
@@ -16,56 +16,32 @@ class Login extends SqlConnect {
         $this->reqMethod = strtolower($_SERVER['REQUEST_METHOD']);
         $this->run();
     }
-
-
-    protected function postLogin() {
-
+    protected function postUpdateStatu() {
         $requestData = json_decode(file_get_contents('php://input'), true);
         
-        if (!isset($requestData['email']) || !isset($requestData['password'])) {
-            header('HTTP/1.0 400 Bad Request');
-            echo json_encode(['error' => 'Missing email or password']);
-            exit;
+        if (!$requestData || !isset($requestData['idInscription']) || !isset($requestData['statut'])) {
+            echo json_encode(['code' => 400, 'message' => 'Données manquantes ou malformées']);
+            return;
         }
         
-        $email = $requestData['email'];
-        $password = $requestData['password'];
+        $idInscription = $requestData['idInscription'];
+        $statut = $requestData['statut'];
         
         try {
-            $stmt = $this->db->prepare("SELECT * FROM users WHERE email = :email");
-            $stmt->execute(['email' => $email]);
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-            if ($user) {
-                $userPassword = $user['password'];
-                if (password_verify($password, $userPassword)) {
-                   session_start();
-                    $_SESSION['user'] = $user;
-                    echo json_encode([
-                        'message' => 'Login successful',
-                        'session_id' => session_id(),
-                        'user' => [
-                            'nom' => $user['lastname'],
-                            'prenom' => $user['firstname'],
-                            'email' => $user['email'],
-                            'id' => $user['id']
-                        ]
-                    ]);
-                    return;
-                } else {
-                    header('HTTP/1.0 401 Unauthorized');
-                    echo json_encode(['error' => 'Invalid password']);
-                }
+            $stmt = $this->db->prepare("UPDATE inscription SET statut = :statut WHERE id = :id");
+            $stmt->bindParam(':statut', $statut);
+            $stmt->bindParam(':id', $idInscription, PDO::PARAM_INT); // Assurez-vous que idInscription est un entier
+            
+            if ($stmt->execute()) {
+                echo json_encode(['code' => 200, 'message' => 'Statut mis à jour avec succès']);
             } else {
-                header('HTTP/1.0 401 Unauthorized');
-                echo json_encode(['error' => 'User not found']);
+                echo json_encode(['code' => 500, 'message' => 'Erreur lors de la mise à jour du statut']);
             }
         } catch (PDOException $e) {
-            header('HTTP/1.0 500 Internal Server Error');
-            echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
+            echo json_encode(['code' => 500, 'message' => 'Erreur de base de données: ' . $e->getMessage()]);
         }
-        }
-
+    }
+    
 
     protected function cors() {
         if (isset($_SERVER['HTTP_ORIGIN'])) {
@@ -94,7 +70,7 @@ class Login extends SqlConnect {
     }
 
     protected function ifMethodExist() {
-        $method = $this->reqMethod . 'Login';
+        $method = $this->reqMethod . 'UpdateStatu';
 
         if (method_exists($this, $method)) {
             echo json_encode($this->$method());
